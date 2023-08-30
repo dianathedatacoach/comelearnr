@@ -1,0 +1,150 @@
+---
+title: "Time Series In R"
+author: "Diana Simon"
+date: "`r Sys.Date()`"
+output: html_document
+---
+The data we are using is  from the NYCHA COMPLAINTS FROM 2006 TO PRESENT Open Portal. I have pulled data using packages different packages
+
+*httr*: is used to work with HTTP requests and responses. It provides functions that make it easier to send HTTP requests to web servers, handle responses, and interact with web APIs.
+
+*Jsonlite*: provides functions for converting between JSON and R objects, allowing you to easily read and write JSON data in R.
+
+1. Install the necessary packages as discussed above
+```{r eval=FALSE, message=FALSE, warning=FALSE, including=TRUE}
+install.packages("httr")
+install.packages("jsonlite")
+```
+
+```{r message=FALSE, warning=FALSE}
+library(httr)
+library(jsonlite)
+```
+
+2.  We must build and pull data from website using *API ENDPOINTS*
+```{r}
+url = GET("https://data.cityofnewyork.us/resource/5uac-w243.json?$query=SELECT%0A%20%20%60cmplnt_num%60%2C%0A%20%20%60addr_pct_cd%60%2C%0A%20%20%60boro_nm%60%2C%0A%20%20%60cmplnt_fr_dt%60%2C%0A%20%20%60cmplnt_fr_tm%60%2C%0A%20%20%60cmplnt_to_dt%60%2C%0A%20%20%60cmplnt_to_tm%60%2C%0A%20%20%60crm_atpt_cptd_cd%60%2C%0A%20%20%60hadevelopt%60%2C%0A%20%20%60housing_psa%60%2C%0A%20%20%60jurisdiction_code%60%2C%0A%20%20%60juris_desc%60%2C%0A%20%20%60ky_cd%60%2C%0A%20%20%60law_cat_cd%60%2C%0A%20%20%60loc_of_occur_desc%60%2C%0A%20%20%60ofns_desc%60%2C%0A%20%20%60parks_nm%60%2C%0A%20%20%60patrol_boro%60%2C%0A%20%20%60pd_cd%60%2C%0A%20%20%60pd_desc%60%2C%0A%20%20%60prem_typ_desc%60%2C%0A%20%20%60rpt_dt%60%2C%0A%20%20%60station_name%60%2C%0A%20%20%60susp_age_group%60%2C%0A%20%20%60susp_race%60%2C%0A%20%20%60susp_sex%60%2C%0A%20%20%60transit_district%60%2C%0A%20%20%60vic_age_group%60%2C%0A%20%20%60vic_race%60%2C%0A%20%20%60vic_sex%60%2C%0A%20%20%60x_coord_cd%60%2C%0A%20%20%60y_coord_cd%60%2C%0A%20%20%60latitude%60%2C%0A%20%20%60longitude%60%2C%0A%20%20%60lat_lon%60%2C%0A%20%20%60geocoded_column%60%2C%0A%20%20%60%3A%40computed_region_efsh_h5xi%60%2C%0A%20%20%60%3A%40computed_region_f5dn_yrer%60%2C%0A%20%20%60%3A%40computed_region_yeji_bk3q%60%2C%0A%20%20%60%3A%40computed_region_92fq_4b7q%60%2C%0A%20%20%60%3A%40computed_region_sbqj_enih%60")
+```
+3. After running the url below, a summary shows the resulting response. You should have the following information below:
+#1. Url from the GET request in shown
+#2. Date and Time request we had made.
+#3. Status refers to the succeess or failuire of the API request  which shows in number form. The number "200" tells us whether or not the request was successful and also details some reason why it might have failed. In this case it is succcessful:200. You can find about statust code here: https://www.restapitutorial.com/httpstatuscodes.html
+#3. In the Content Type shows what form the data takes which is /json format which is why we need jsonlite package
+#4. Also the Size of the Request 387KB
+
+
+```{r pressure, echo=FALSE}
+url
+```
+
+4. We must convert into JSON Format as currently its formatted state is not usable. The actual data is contained as a raw Unicode in the url list. We use the rawToChar() function to perform this task
+
+```{r}
+rawToChar(url$content)
+```
+Now you will see the data but it is in JSON structure in character format. 
+
+#5. From chracter vector/format we convert it into a listdata structure using the fromJSON() function in jsonlite library. Now we can read our columns 
+```{r}
+data = fromJSON(rawToChar(url$content))
+names(data)
+```
+#6. How many people have taken Staff Analyst Exam? %>% is an operator from the magrittr package which is commonly used with dplyr. When I did was install dplyr.
+```{r}
+library(dplyr)
+distinct_count <- data %>% 
+  distinct(cmplnt_num) %>% 
+  n_distinct()
+print(distinct_count)
+```
+
+7. Tally data
+```{r}
+data %>% 
+  group_by( vic_race) %>%
+  tally()
+```
+8. Lets place date in separate columns splittig time and date
+```{r}
+library(tidyr)
+data_separated <- separate(data, cmplnt_fr_dt, into = c("date", "time"), sep = "T")
+
+```
+9. Separate the time column into hours, minutes, seconds, and milliseconds
+```{r}
+data_separated <- separate(data_separated, time, into = c("hours", "minutes", "seconds", "milliseconds"), sep = "[:.]")
+
+
+
+```
+10. Display the fully separated dataframe
+```{r}
+
+print(data_separated)
+```
+11. lets separate year, month and year using lubridate package
+# Convert the date_column to a lubridate Date object
+```{r}
+library(lubridate)
+data_separated$date <- ymd(data_separated$date)
+```
+12.  Extract year, month, and day into separate columns
+```{r}
+data_separated$year <- year(data_separated$date)
+data_separated$month <- month(data_separated$date)
+data_separated$day <- day(data_separated$date)
+```
+13. Let us pull only complaint id and year
+```{r}
+df_1 <- data_separated %>% select(vic_race, year)
+```
+14.  Look at the class of our data
+```{r}
+class(df_1)
+```
+15.  Use *dplyr* to group by *year* and *race*, then summarize to calculate total count
+```{r}
+library(dplyr)
+data_with_count <- df_1 %>%
+  group_by(year, vic_race) %>%
+  summarise(total_count = n(),.groups = "drop") 
+```
+16.  Merge the summarized data back into the original data frame using *left join*
+```{r}
+df_1<- left_join(df_1, data_with_count, by = c("year", "vic_race"))
+```
+17. Remove duplicated using distinct
+```{r}
+distinct(df_1)
+```
+18. Lets view the data 
+```{r}
+summary(df_1)
+```
+20. We see an *error 1012*
+```{r}
+df_1 %>% filter(year == '1012')
+```
+21. Remove rows with year equal to 1012
+```{r}
+data_filtered <- df_1[df_1$year != 1012, ]
+```
+22. Convert data to timeseries
+```{r}
+timets <- ts(data_filtered$total_count, start = 2019, end = 2023, frequency = 4)
+```
+23. Data arranged to quarterly lets see
+```{r}
+timets 
+```
+
+24. Lets see if is a time series data
+```{r}
+class(timets)
+```
+25. Now that we know its a time series we can *plot* our information
+```{r}
+plot(timets)
+```
+
+We noticed nycha applications are increasing every year but 2023 seems to be increasing. There was a spike bet
